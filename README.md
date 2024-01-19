@@ -52,6 +52,20 @@ cd graspnetAPI
 pip install .
 ```
 
+## Usage of Graspnet with FR3 or Panda research robot
+Start ros master service (include '&' to run in bg)
+```bash
+roscore
+```
+Start bridge between Xbox Kinect and GPU
+```bash
+roslasunch kinect2_bridge kinect2_bridge.launch
+```
+Execute command demo script
+```bash
+./command_demo.sh
+``` 
+
 ## Tolerance Label Generation
 Tolerance labels are not included in the original dataset, and need additional generation. Make sure you have downloaded the orginal dataset from [GraspNet](https://graspnet.net/). The generation code is in [dataset/generate_tolerance_label.py](dataset/generate_tolerance_label.py). You can simply generate tolerance label by running the script: (`--dataset_root` and `--num_workers` should be specified according to your settings)
 ```bash
