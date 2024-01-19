@@ -59,7 +59,7 @@ roscore
 ```
 Start bridge between Xbox Kinect and GPU
 ```bash
-roslasunch kinect2_bridge kinect2_bridge.launch
+roslaunch kinect2_bridge kinect2_bridge.launch
 ```
 Execute command demo script
 ```bash
