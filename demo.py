@@ -53,11 +53,6 @@ cfgs = parser.parse_args()
 
 bridge = CvBridge()
 
-cur_color = None
-cur_depth = None
-depth_call_count = 0
-
-
 def get_net():
     # Init the model
     net = GraspNet(input_feature_dim=0, num_view=cfgs.num_view, num_angle=12, num_depth=4,
@@ -70,56 +65,6 @@ def get_net():
     start_epoch = checkpoint['epoch']
     net.eval()
     return net
-
-def process_kinect_data(data_dir):
-    # load data
-    global cur_color
-    global cur_depth
-
-    file_name = "kumar_converted.png"
-    img = Image.fromarray(cur_color, "RGB")
-    img.save(file_name)
-    # color = np.array(cur_color, dtype=np.float32)
-
-    color = np.array(cur_color, dtype=np.float32) / 255.0
-    depth = cur_depth
-    print("DEPTH START", depth, depth.size)
-
-    workspace_mask = np.array(Image.open(os.path.join(data_dir, 'kumar_converted.png')))
-    meta = scio.loadmat(os.path.join(data_dir, 'meta.mat'))
-    intrinsic = meta['intrinsic_matrix']
-    factor_depth = meta['factor_depth']
-    camera = CameraInfo(1920.0, 1080.0, 1.0534e+03, 1.0528e+03, 9.4948e+02, 5.5079e+02, factor_depth)
-    cloud = create_point_cloud_from_depth_image(depth, camera, organized=True)
-
-    # get valid points
-    mask = (workspace_mask & (depth > 0))
-    cloud_masked = cloud[mask]
-    color_masked = color[mask]
-    # cloud_masked = np.array(cloud_masked, dtype="float32")
-
-    # sample points
-    if len(cloud_masked) >= cfgs.num_point:
-        idxs = np.random.choice(len(cloud_masked), cfgs.num_point, replace=False)
-    else:
-        idxs1 = np.arange(len(cloud_masked))
-        idxs2 = np.random.choice(len(cloud_masked), cfgs.num_point-len(cloud_masked), replace=True)
-        idxs = np.concatenate([idxs1, idxs2], axis=0)
-    cloud_sampled = cloud_masked[idxs]
-    color_sampled = color_masked[idxs]
-
-    # convert data
-    cloud = o3d.geometry.PointCloud()
-    cloud.points = o3d.utility.Vector3dVector(cloud_masked.astype(np.float32))
-    cloud.colors = o3d.utility.Vector3dVector(color_masked.astype(np.float32))
-    end_points = dict()
-    cloud_sampled = torch.from_numpy(cloud_sampled[np.newaxis].astype(np.float32))
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    cloud_sampled = cloud_sampled.to(device)
-    end_points['point_clouds'] = cloud_sampled
-    end_points['cloud_colors'] = color_sampled
-
-    return end_points, cloud
 
 def get_grasps(net, end_points):
     # Forward pass
@@ -153,7 +98,7 @@ def find_grasps(gg, cloud):
     ret = []
     vis = o3d.visualization.Visualizer()
     vis.create_window(width=900)
-    
+    # print("grasp after processing:", "1", gg[0], "2", gg[1], "3", gg[2], "4", gg[3])
     vis = add_geos(gg, vis)
     vis.add_geometry(cloud)
 
@@ -191,16 +136,26 @@ def vis_grasps(gg, cloud):
     gg.sort_by_score()
     gg = sort_by_rot(gg)
     gg = find_grasps(gg[:4], cloud)
+    best_grasp = gg[0][0]
+    print("BEST GRASP", best_grasp)
+    print("Width:", best_grasp.width, "Height:", best_grasp.height, "Depth:", best_grasp.depth)
     rotated = False
     
-    grippers = gg[0][0].to_open3d_geometry(color=colors[gg[0][1]])
+    # grippers = gg[0][0].to_open3d_geometry(color=colors[gg[0][1]])
     grasp_info = 'box'
-    grasp_save_file_path = "/home/vaporeon/datasets/funnel_ik/cheeze_its_box.csv"
+    grasp_save_file_path = "/home/noah/datasets/grasp_data.csv"
     save_grasp(gg[0][0], grasp_save_file_path, grasp_info)
     
     vis = o3d.visualization.Visualizer()
     vis.create_window(width=900)
     
+    #Create sphere around best grasp to remove object from scene
+    # center = np.array([best_grasp.width, best_grasp.height, best_grasp.depth])
+    # radius = 0.05
+    # points = np.asarray(cloud.points)
+    # distances = np.linalg.norm(points - center, axis=1)
+    # cloud.points = o3d.utility.Vector3dVector(points[distances <= radius])
+
     vis.add_geometry(gg[0][0].to_open3d_geometry(color=colors[gg[0][1]]))
     vis.add_geometry(cloud)
     ggg = gg[0][0]
@@ -213,18 +168,6 @@ def vis_grasps(gg, cloud):
             rotated = True
         
         vis.update_renderer()
-    
-
-def get_best_grasp_6d(gg):
-    gg.nms()
-    gg.sort_by_score()
-    
-    for idx, g in reversed((list(enumerate(gg)))):
-        if g.translation[2] > 1.0:
-            gg.remove(idx)
-        print(len(gg))
-    grasp = gg[0]
-    return grasp
 
 # caleb -  
 def sort_by_rot(gg):
@@ -240,63 +183,97 @@ def sort_by_rot(gg):
         sorted_grasp.add(i)
     return sorted_grasp
 
-def demo(data_dir):
-    # pub_csv()
-    net = get_net()
-    end_points, cloud = process_kinect_data(data_dir)
-    gg = GraspGroup()
-    for i in range(1):
-        graspsps = get_grasps(net, end_points)
-        gg.add(graspsps)
-    
-
-    if cfgs.collision_thresh > 0:
-        gg = collision_detection(gg, np.array(cloud.points))
-
-    # What should the structure of grasp info be?
-    # location[1-18], rotation[0, 45, 90, 135], object[box, cylinder, mustard]
-    vis_grasps(gg,cloud)
-    # pub_csv()
-    
-    
-def kinect_color_cb(msg):
-    global cur_color
-    cv2_img = bridge.imgmsg_to_cv2(msg, "rgb8")
-    cur_color = np.array(cv2_img)
-
 def grasp_talker(grasp):
     pub = rospy.Publisher('/grasp_net/grasp6d', Float32MultiArray, queue_size=1)
     msg = Float32MultiArray()
     msg.data = np.concatenate((grasp.translation, list(grasp.rotation_matrix.flatten())))
     pub.publish(msg)
 
-
-def pub_csv():
-    arr = np.loadtxt("/home/vaporeon/datasets/funnel_ik/output.csv", delimiter=',', dtype=str)
-    print(arr[4])
-    matrices = []
-    for i in range(0, len(arr) - 4, 4):
-        rot_mat = arr[i+1] + arr[i+2]
-        print(rot_mat)
-
-
-def kinect_depth_cb(msg):
-    global depth_call_count
-    global cur_depth
-    depth_lim = 5
-    depth_call_count += 1
-    cv2_img = bridge.imgmsg_to_cv2(msg)
-    cur_depth = np.array(cv2_img)
+class Kinect():
+    def __init__(self):
+        self.cur_depth = None
+        self.cur_color = None
+        self.data_dir = 'doc/example_data'
     
-    if depth_call_count > depth_lim:
-        depth_call_count = 0
-        data_dir = 'doc/example_data'
-        demo(data_dir)
+    def kinect_depth_cb(self, msg):
+        cv2_img = bridge.imgmsg_to_cv2(msg)
+        self.cur_depth = np.array(cv2_img)
+
+        self.demo(self.data_dir)    
+
+    def kinect_color_cb(self, msg):
+        global cur_color
+        cv2_img = bridge.imgmsg_to_cv2(msg, "rgb8")
+        cur_color = np.array(cv2_img)
+
+    def demo(self, data_dir):
+        net = get_net()
+        end_points, cloud = self.process_kinect_data(data_dir)
+        gg = GraspGroup()
+        for i in range(1):
+            graspsps = get_grasps(net, end_points)
+            gg.add(graspsps)
+
+
+        if cfgs.collision_thresh > 0:
+            gg = collision_detection(gg, np.array(cloud.points))
+
+        # What should the structure of grasp info be?
+        # location[1-18], rotation[0, 45, 90, 135], object[box, cylinder, mustard]
+        vis_grasps(gg,cloud)
+
+    def process_kinect_data(self, data_dir):
+        file_name = "kumar_converted.png"
+        img = Image.fromarray(cur_color, "RGB")
+        img.save(file_name)
+        # color = np.array(cur_color, dtype=np.float32)
+
+        color = np.array(cur_color, dtype=np.float32) / 255.0
+        depth = self.cur_depth
+        print("DEPTH START", depth, depth.size)
+
+        workspace_mask = np.array(Image.open(os.path.join(data_dir, 'kumar_converted.png')))
+        meta = scio.loadmat(os.path.join(data_dir, 'meta.mat'))
+        intrinsic = meta['intrinsic_matrix']
+        factor_depth = meta['factor_depth']
+        camera = CameraInfo(1920.0, 1080.0, 1.0534e+03, 1.0528e+03, 9.4948e+02, 5.5079e+02, factor_depth)
+        cloud = create_point_cloud_from_depth_image(depth, camera, organized=True)
+
+        # get valid points
+        mask = (workspace_mask & (depth > 0))
+        cloud_masked = cloud[mask]
+        color_masked = color[mask]
+        # cloud_masked = np.array(cloud_masked, dtype="float32")
+
+        # sample points
+        if len(cloud_masked) >= cfgs.num_point:
+            idxs = np.random.choice(len(cloud_masked), cfgs.num_point, replace=False)
+        else:
+            idxs1 = np.arange(len(cloud_masked))
+            idxs2 = np.random.choice(len(cloud_masked), cfgs.num_point-len(cloud_masked), replace=True)
+            idxs = np.concatenate([idxs1, idxs2], axis=0)
+        cloud_sampled = cloud_masked[idxs]
+        color_sampled = color_masked[idxs]
+
+        # convert data
+        cloud = o3d.geometry.PointCloud()
+        cloud.points = o3d.utility.Vector3dVector(cloud_masked.astype(np.float32))
+        cloud.colors = o3d.utility.Vector3dVector(color_masked.astype(np.float32))
+        end_points = dict()
+        cloud_sampled = torch.from_numpy(cloud_sampled[np.newaxis].astype(np.float32))
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        cloud_sampled = cloud_sampled.to(device)
+        end_points['point_clouds'] = cloud_sampled
+        end_points['cloud_colors'] = color_sampled
+
+        return end_points, cloud
+
 
 if __name__=='__main__':
+    kinect = Kinect()
     rospy.init_node('kinect_to_grasp_prop')
     image_color_topic = "/kinect2/hd/image_color_rect"
     image_depth_topic = "/kinect2/hd/image_depth_rect"
-    rospy.Subscriber(image_color_topic, ros_img, kinect_color_cb, queue_size=1)
-    rospy.Subscriber(image_depth_topic, ros_img, kinect_depth_cb, queue_size=1)
+    rospy.Subscriber(image_color_topic, ros_img, kinect.kinect_color_cb, queue_size=1)
+    rospy.Subscriber(image_depth_topic, ros_img, kinect.kinect_depth_cb, queue_size=1)
     rospy.spin()
