@@ -136,6 +136,7 @@ def vis_grasps(gg, cloud):
     gg.sort_by_score()
     gg = sort_by_rot(gg)
     gg = find_grasps(gg[:4], cloud)
+
     best_grasp = gg[0][0]
     print("BEST GRASP", best_grasp)
     print("Width:", best_grasp.width, "Height:", best_grasp.height, "Depth:", best_grasp.depth)
@@ -147,7 +148,7 @@ def vis_grasps(gg, cloud):
     save_grasp(gg[0][0], grasp_save_file_path, grasp_info)
     
     vis = o3d.visualization.Visualizer()
-    vis.create_window(width=900)
+    # vis.create_window(width=900)
     
     #Create sphere around best grasp to remove object from scene
     # center = np.array([best_grasp.width, best_grasp.height, best_grasp.depth])
@@ -169,9 +170,7 @@ def vis_grasps(gg, cloud):
         
         vis.update_renderer()
 
-# caleb -  
 def sort_by_rot(gg):
-
     y_value = gg.grasp_group_array[:, 14]
     index = []
     for idx, y_val in enumerate(y_value):
@@ -194,12 +193,16 @@ class Kinect():
         self.cur_depth = None
         self.cur_color = None
         self.data_dir = 'doc/example_data'
+        self.depth_call_count = 0
+        self.depth_call_lim = 5
     
     def kinect_depth_cb(self, msg):
+        self.depth_call_count += 1
         cv2_img = bridge.imgmsg_to_cv2(msg)
         self.cur_depth = np.array(cv2_img)
-
-        self.demo(self.data_dir)    
+        if self.depth_call_count > self.depth_call_lim:
+            self.depth_call_count = 0
+            self.demo(self.data_dir)    
 
     def kinect_color_cb(self, msg):
         global cur_color
@@ -230,9 +233,11 @@ class Kinect():
 
         color = np.array(cur_color, dtype=np.float32) / 255.0
         depth = self.cur_depth
-        print("DEPTH START", depth, depth.size)
+        # print("DEPTH START", depth, depth.size)
 
         workspace_mask = np.array(Image.open(os.path.join(data_dir, 'kumar_converted.png')))
+        print("MASK SHAPE", workspace_mask[0])
+        print("DEPTH SHAPE", depth.shape)
         meta = scio.loadmat(os.path.join(data_dir, 'meta.mat'))
         intrinsic = meta['intrinsic_matrix']
         factor_depth = meta['factor_depth']
@@ -267,7 +272,6 @@ class Kinect():
         end_points['cloud_colors'] = color_sampled
 
         return end_points, cloud
-
 
 if __name__=='__main__':
     kinect = Kinect()
