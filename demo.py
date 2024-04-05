@@ -189,7 +189,6 @@ def vis_grasps(gg, cloud):
                 vis.destroy_window()
                 index=0
                 break
-            print("TYPE:", gg[prev].to_open3d_geometry(color = (0,0,0)).get_geometry_type())
             vis.add_geometry(gg[prev].to_open3d_geometry(color = (0,0,0)), False)
             vis.add_geometry(gg[index+1].to_open3d_geometry(color = (0,0,0)), False)
             vis.add_geometry(gg[index].to_open3d_geometry(color=(0, 1, 0)), False)
@@ -250,9 +249,9 @@ class Kinect():
 
     def process_kinect_data(self, data_dir):
         # TODO: Can delete or make a new function.
-        # file_name = "kumar_converted.png"
-        # img = Image.fromarray(cur_color, "RGB")
-        # img.save(file_name)
+        file_name = "kumar_converted.png"
+        img = Image.fromarray(cur_color, "RGB")
+        img.save(file_name)
 
         color = np.array(cur_color, dtype=np.float32) / 255.0
         workspace_mask = np.array(Image.open(os.path.join(data_dir, 'kumar_converted.png')))
