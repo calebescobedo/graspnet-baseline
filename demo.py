@@ -96,7 +96,6 @@ def add_geos(gg, vis):
         vis.add_geometry(g.to_open3d_geometry())
 
 def find_grasps(gg, cloud):
-    # TODO: this function need to be completely refactored so we don't have the text interface anymore
     rotated = False
     flag = True
     dct = {}
@@ -106,13 +105,6 @@ def find_grasps(gg, cloud):
     vis = add_geos(gg, vis)
     vis.add_geometry(cloud)
     while flag:
-        # if not vis.poll_events():
-        #     print('Please input corresponding color to best grasp\n case sensitive: red, blue, green, black')
-        # color = str(input())
-        #     print(color)
-        # ret.append((dct[color], color))
-        #     flag = False
-            # break 
         if not rotated:
             ctr = vis.get_view_control()
             # TODO: Check when we need to rotate?
@@ -193,7 +185,7 @@ def vis_grasps(gg, cloud):
             vis.add_geometry(gg[index+1].to_open3d_geometry(color = (0,0,0)), False)
             vis.add_geometry(gg[index].to_open3d_geometry(color=(0, 1, 0)), False)
             vis.update_renderer()
-            # time.sleep(.05)
+            time.sleep(.05)
 
 def sort_by_rot(gg):
     y_value = gg.grasp_group_array[:, 14]
